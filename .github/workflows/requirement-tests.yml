@@ -1,0 +1,61 @@
+name: Requirement tests
+
+# Runs only tests/test_asimov_constants.py, which verifies the requirement
+# register published at osseus-mvp/asimov-1 in tests/requirements/.
+#
+# Why this is separate from the Tests workflow rather than part of it:
+#
+# 1. uv.lock pins mujoco to a nightly, 3.4.1.dev843752024, that no longer
+#    exists on py.mujoco.org. The index retains only recent builds and the
+#    oldest one left is 3.10.0.dev927139826, so `uv sync --frozen` cannot
+#    resolve on any platform and every job in Tests fails before it runs a
+#    test. That predates this workflow: main has been red since 2025-12-18.
+# 2. Repointing the lock repository-wide is not a safe fix. Upgrading to the
+#    current nightly resolves and installs, but 103 of the existing tests then
+#    fail against MuJoCo 3.11's changed structs. Those are upstream's to
+#    triage, not something to bundle into a test-only change.
+#
+# So this workflow upgrades the mujoco pin for its own run and does not commit
+# the result, keeping the repair inside the one job that needs it. The
+# requirement tests pass under the current nightly; they use Entity,
+# spec.compile() and MjModel accessors only.
+
+on:
+  pull_request:
+    paths:
+      - 'tests/test_asimov_constants.py'
+      - 'src/mjlab/asset_zoo/robots/asimov/**'
+      - '.github/workflows/requirement-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tests/test_asimov_constants.py'
+      - 'src/mjlab/asset_zoo/robots/asimov/**'
+      - '.github/workflows/requirement-tests.yml'
+
+jobs:
+  requirements:
+    name: Verify Asimov constants against the requirement register
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          version: "0.9.14"
+
+      - name: Repoint the mujoco nightly for this run only
+        # Deliberately unpinned: the nightly index prunes old builds, so any
+        # exact version written here rots the same way the committed one did.
+        run: uv lock --upgrade-package mujoco
+
+      - name: Run requirement tests
+        run: uv run pytest tests/test_asimov_constants.py -v
+
+      - name: Lint the requirement tests
+        run: |
+          uvx ruff@0.14.7 check tests/test_asimov_constants.py
+          uvx ruff@0.14.7 format --check tests/test_asimov_constants.py

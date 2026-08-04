@@ -53,6 +53,16 @@ ARMATURE_TOLERANCE_PERCENT = 0.5
 # robot with 6 joints per leg."
 LOCOMOTION_JOINT_COUNT = 12
 
+# REQ-L2-CONTROL-CHANNELS. The compiled model carries two actuators per joint,
+# not one. asimov.xml ships its own <actuator> block of 12 plain <motor>
+# elements named "<joint>_ctrl", and the BuiltinPositionActuatorCfg entries add
+# 12 <position> actuators named "<joint>" on top of them. Only the position
+# actuators carry the effort limits; the inherited motors are force-unlimited.
+# unitree_g1's XML has no actuator block, which is why test_g1_constants.py can
+# assert that every compiled actuator is force limited and this file cannot.
+INHERITED_MOTOR_SUFFIX = "_ctrl"
+INHERITED_MOTOR_COUNT = 12
+
 
 @pytest.fixture(scope="module")
 def asimov_entity() -> Entity:
@@ -101,10 +111,15 @@ def test_effort_limits_match_datasheet_peak_torques(
 
   # The limit has to survive compilation, not just sit in the config: MuJoCo
   # enforces it as the actuator's force range.
+  #
+  # fullmatch rather than match, unlike test_g1_constants.py, because the
+  # position actuator is named for its joint and the inherited motor is named
+  # "<joint>_ctrl" — a prefix match would select both and read the unlimited
+  # one's empty force range as a failure of this requirement.
   matched = 0
   for index in range(asimov_model.nu):
     actuator = asimov_model.actuator(index)
-    if any(re.match(p, actuator.name) for p in actuator_config.joint_names_expr):
+    if any(re.fullmatch(p, actuator.name) for p in actuator_config.joint_names_expr):
       matched += 1
       assert actuator.forcerange[0] == -peak
       assert actuator.forcerange[1] == peak
@@ -238,7 +253,7 @@ def test_actuator_patterns_cover_every_actuated_joint_exactly_once(asimov_entity
 
 
 def test_every_locomotion_joint_carries_a_finite_effort_limit(asimov_entity, asimov_model):
-  """REQ-L1-TORQUE-LIMITED: all 12 joints are torque limited, none left open.
+  """REQ-L1-TORQUE-LIMITED: every joint gets a torque-limited position actuator.
 
   An actuator with no effort limit can command any torque the solver asks for,
   which is the one thing the torque-limiting safety function exists to prevent.
@@ -249,28 +264,55 @@ def test_every_locomotion_joint_carries_a_finite_effort_limit(asimov_entity, asi
     )
     assert math.isfinite(config.effort_limit)
 
-  assert asimov_model.nu == LOCOMOTION_JOINT_COUNT, (
-    f"the compiled model has {asimov_model.nu} actuators, expected"
-    f" {LOCOMOTION_JOINT_COUNT}"
+  limited = [
+    asimov_model.actuator(index).name
+    for index in range(asimov_model.nu)
+    if asimov_model.actuator_forcelimited[index] == 1
+  ]
+  assert sorted(limited) == sorted(asimov_entity.joint_names), (
+    "the force-limited actuators are not exactly one per joint:"
+    f" {sorted(limited)} against {sorted(asimov_entity.joint_names)}"
   )
-  for index in range(asimov_model.nu):
-    actuator = asimov_model.actuator(index)
-    assert asimov_model.actuator_forcelimited[index] == 1, (
-      f"actuator {actuator.name} is not force limited"
-    )
-    assert actuator.forcerange[1] > 0
+  for name in limited:
+    assert asimov_model.actuator(name).forcerange[1] > 0
 
 
-def test_locomotion_model_declares_twelve_actuated_joints(asimov_entity):
-  """REQ-L2-ACTUATOR-COVERAGE: the model is the 12-DOF locomotion subset.
+def test_locomotion_model_declares_twelve_actuated_joints(asimov_entity, asimov_model):
+  """REQ-L2-ACTUATOR-COVERAGE and REQ-L2-CONTROL-CHANNELS: 12 joints, 24 channels.
 
-  Worth asserting on its own because of the discrepancy it records. The
-  hardware repository declares 25 actuated joints for the whole robot; this
-  package models the biped only, so 13 of those joints have no gains, no
-  effort limit and no coverage here. Pinning 12 keeps that gap visible instead
-  of letting the number drift towards looking complete.
+  Two facts worth pinning, both of them uncomfortable.
+
+  The first is scope. The hardware repository declares 25 actuated joints for
+  the whole robot; this package models the biped only, so 13 of those joints
+  have no gains, no effort limit and no coverage here. Pinning 12 keeps that
+  gap visible instead of letting the number drift towards looking complete.
+
+  The second is a defect. The compiled model has 24 actuators, not 12: the 12
+  torque-limited <position> actuators this package configures, plus the 12
+  force-unlimited <motor> actuators asimov.xml ships in its own <actuator>
+  block. Writing to a "<joint>_ctrl" control input bypasses the effort limits
+  entirely. That is asserted here rather than quietly filtered out, so that
+  removing the inherited block — the fix — fails this test and forces the
+  register to be updated with it.
   """
   assert asimov_entity.num_joints == LOCOMOTION_JOINT_COUNT
-  assert asimov_entity.num_actuators == LOCOMOTION_JOINT_COUNT
   assert asimov_entity.is_actuated
   assert not asimov_entity.is_fixed_base
+
+  inherited = [
+    asimov_model.actuator(index).name
+    for index in range(asimov_model.nu)
+    if asimov_model.actuator(index).name.endswith(INHERITED_MOTOR_SUFFIX)
+  ]
+  assert len(inherited) == INHERITED_MOTOR_COUNT, (
+    f"asimov.xml's own <actuator> block contributes {len(inherited)} actuators,"
+    f" expected {INHERITED_MOTOR_COUNT}; if it was removed, drop"
+    " INHERITED_MOTOR_COUNT and REQ-L2-CONTROL-CHANNELS along with it"
+  )
+  assert not any(
+    asimov_model.actuator_forcelimited[index] == 1
+    for index in range(asimov_model.nu)
+    if asimov_model.actuator(index).name.endswith(INHERITED_MOTOR_SUFFIX)
+  ), "an inherited motor actuator became force limited; the defect may be fixed"
+
+  assert asimov_entity.num_actuators == LOCOMOTION_JOINT_COUNT + INHERITED_MOTOR_COUNT
