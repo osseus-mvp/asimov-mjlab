@@ -56,7 +56,16 @@ jobs:
         # --junitxml writes the per-test record. Without it the only thing a
         # reader outside this repository can learn from a run is whether the
         # whole job went green, which reads a skipped test as a passing one.
-        run: uv run pytest tests/test_asimov_constants.py -v --junitxml=junit.xml
+        #
+        # junit_family=xunit1 rather than the xunit2 default: xunit2
+        # filters the `file` attribute off every <testcase>, leaving only a
+        # dotted classname. A reader outside this repository would then have
+        # to turn `tests.test_asimov_constants` back into a path to say which
+        # test a result belongs to, and that guess is wrong the first time a
+        # directory has a dot in it.
+        run: >-
+          uv run pytest tests/test_asimov_constants.py -v
+          --junitxml=junit.xml -o junit_family=xunit1
 
       - name: Upload the test report
         # always(): a red run's report is the one worth reading. Skipping the
