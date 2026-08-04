@@ -53,7 +53,21 @@ jobs:
         run: uv lock --upgrade-package mujoco
 
       - name: Run requirement tests
-        run: uv run pytest tests/test_asimov_constants.py -v
+        # --junitxml writes the per-test record. Without it the only thing a
+        # reader outside this repository can learn from a run is whether the
+        # whole job went green, which reads a skipped test as a passing one.
+        run: uv run pytest tests/test_asimov_constants.py -v --junitxml=junit.xml
+
+      - name: Upload the test report
+        # always(): a red run's report is the one worth reading. Skipping the
+        # upload on failure would publish per-test detail only for the runs
+        # where every test already passed.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: junit.xml
+          if-no-files-found: error
 
       - name: Lint the requirement tests
         run: |
