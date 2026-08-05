@@ -24,12 +24,14 @@ on:
   pull_request:
     paths:
       - 'tests/test_asimov_constants.py'
+      - 'tests/test_actuator_parameters.py'
       - 'src/mjlab/asset_zoo/robots/asimov/**'
       - '.github/workflows/requirement-tests.yml'
   push:
     branches: [main]
     paths:
       - 'tests/test_asimov_constants.py'
+      - 'tests/test_actuator_parameters.py'
       - 'src/mjlab/asset_zoo/robots/asimov/**'
       - '.github/workflows/requirement-tests.yml'
 
@@ -63,8 +65,16 @@ jobs:
         # to turn `tests.test_asimov_constants` back into a path to say which
         # test a result belongs to, and that guess is wrong the first time a
         # directory has a dot in it.
+        #
+        # test_actuator_parameters.py runs beside it because
+        # actuator_parameters.yaml is only worth anything if it still
+        # describes asimov_constants.py, and a declaration nothing checks
+        # drifts silently. --with pyyaml because a YAML parser is not a
+        # dependency of this package and should not become one to satisfy a
+        # test.
         run: >-
-          uv run pytest tests/test_asimov_constants.py -v
+          uv run --with pyyaml pytest
+          tests/test_asimov_constants.py tests/test_actuator_parameters.py -v
           --junitxml=junit.xml -o junit_family=xunit1
 
       - name: Upload the test report
@@ -80,5 +90,5 @@ jobs:
 
       - name: Lint the requirement tests
         run: |
-          uvx ruff@0.14.7 check tests/test_asimov_constants.py
-          uvx ruff@0.14.7 format --check tests/test_asimov_constants.py
+          uvx ruff@0.14.7 check tests/test_asimov_constants.py tests/test_actuator_parameters.py
+          uvx ruff@0.14.7 format --check tests/test_asimov_constants.py tests/test_actuator_parameters.py
