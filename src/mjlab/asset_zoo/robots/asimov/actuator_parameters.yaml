@@ -1,0 +1,120 @@
+# The actuators this package configures, published as data.
+#
+# asimov_constants.py is the only place Asimov's effort limits and damping
+# gains are set, and it is Python: a reader can get the numbers out of it by
+# parsing, but not the units. `EFFORT_HIP_PITCH = 120.0` is in newton metres
+# because a comment beside it says so, and a comment is prose.
+#
+# This file states the parts a machine cannot derive — which constant carries
+# which quantity, in which unit, for which joints — so that a tool checking
+# the requirement register on osseus-mvp/asimov-1 can compare a real value
+# against a real limit instead of reading a number out of a table.
+#
+# Three rules govern it.
+#
+# 1. **No numbers.** Every entry names a constant; the value is read from
+#    asimov_constants.py. That is deliberate and it is the whole point: a copy
+#    of a number here could go stale against the module, and a stale copy that
+#    still looks authoritative is worse than no copy. Change DAMPING_KNEE and
+#    the number changes everywhere; rename it and this file names a constant
+#    that no longer exists, which is a loud failure rather than a quiet one.
+#
+# 2. **Only constants that are literals.** STIFFNESS_* is written as
+#    `ARMATURE_* * NATURAL_FREQ**2`, so its value cannot be read without
+#    running the multiplication, and the reader refuses rather than doing the
+#    fork's arithmetic and calling the result a measurement. Those constants
+#    are therefore not listed here. The same goes for anything whose value
+#    depends on evaluating a regular expression against a compiled model.
+#
+# 3. **Joints are written out.** asimov_constants.py matches joints with
+#    regular expressions; expanding one against a compiled model is running
+#    this package's own rule. The joints are listed literally so a reviewer
+#    checks a list rather than trusting a match.
+#
+# README.md is not a source for any of this. Its "Resulting Gains" table
+# states KD 5.0 for every joint and DAMPING_KNEE has been 6.0 for some time —
+# tests/test_asimov_constants.py fails on exactly that, and it is the reason
+# nothing here is transcribed from prose.
+
+schema: osseus-actuator-parameters/v1
+
+# Relative to this file.
+constants_module: asimov_constants.py
+
+actuators:
+  - id: hip-pitch
+    name: Hip pitch actuator
+    motor: EC-A6416-P2-25
+    joints:
+      - left_hip_pitch_joint
+      - right_hip_pitch_joint
+    parameters:
+      - constant: EFFORT_HIP_PITCH
+        measure: effort_limit_nm
+        unit: 'N·m'
+      - constant: DAMPING_HIP_PITCH
+        measure: damping_nm_s_per_rad
+        unit: 'N·m·s/rad'
+
+  - id: hip-roll
+    name: Hip roll actuator
+    motor: EC-A5013-H17-100
+    joints:
+      - left_hip_roll_joint
+      - right_hip_roll_joint
+    parameters:
+      - constant: EFFORT_HIP_ROLL
+        measure: effort_limit_nm
+        unit: 'N·m'
+      - constant: DAMPING_HIP_ROLL
+        measure: damping_nm_s_per_rad
+        unit: 'N·m·s/rad'
+
+  - id: hip-yaw
+    name: Hip yaw actuator
+    motor: EC-A3814-H14-107
+    joints:
+      - left_hip_yaw_joint
+      - right_hip_yaw_joint
+    parameters:
+      - constant: EFFORT_HIP_YAW
+        measure: effort_limit_nm
+        unit: 'N·m'
+      - constant: DAMPING_HIP_YAW
+        measure: damping_nm_s_per_rad
+        unit: 'N·m·s/rad'
+
+  - id: knee
+    name: Knee actuator
+    motor: EC-A4315-P2-36
+    joints:
+      - left_knee_joint
+      - right_knee_joint
+    parameters:
+      - constant: EFFORT_KNEE
+        measure: effort_limit_nm
+        unit: 'N·m'
+      - constant: DAMPING_KNEE
+        measure: damping_nm_s_per_rad
+        unit: 'N·m·s/rad'
+
+  # One configuration drives both ankle degrees of freedom, which is why four
+  # joints are listed against one set of constants: ASIMOV_ACTUATOR_ANKLE's
+  # joint_names_expr names both `.*_ankle_pitch_joint` and
+  # `.*_ankle_roll_joint`, and EFFORT_ANKLE and DAMPING_ANKLE apply to all
+  # four motors.
+  - id: ankle
+    name: Ankle actuator
+    motor: EC-A4310-P2-36
+    joints:
+      - left_ankle_pitch_joint
+      - left_ankle_roll_joint
+      - right_ankle_pitch_joint
+      - right_ankle_roll_joint
+    parameters:
+      - constant: EFFORT_ANKLE
+        measure: effort_limit_nm
+        unit: 'N·m'
+      - constant: DAMPING_ANKLE
+        measure: damping_nm_s_per_rad
+        unit: 'N·m·s/rad'
